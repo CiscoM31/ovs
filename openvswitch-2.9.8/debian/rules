@@ -86,10 +86,10 @@ override_dh_auto_install:
 
 override_dh_install:
 	dh_install --list-missing
-	cp debian/openvswitch-switch.default debian/openvswitch-switch/usr/share/openvswitch/switch/default.template
-	mkdir -p $(CURDIR)/debian/openvswitch-switch/usr/lib/openvswitch-switch
-	mv $(CURDIR)/debian/openvswitch-switch/usr/sbin/ovs-vswitchd \
-		$(CURDIR)/debian/openvswitch-switch/usr/lib/openvswitch-switch/ovs-vswitchd
+	cp debian/openvswitch-switch-cisco.default debian/openvswitch-switch-cisco/usr/share/openvswitch/switch/default.template
+	mkdir -p $(CURDIR)/debian/openvswitch-switch-cisco/usr/lib/openvswitch-switch
+	mv $(CURDIR)/debian/openvswitch-switch-cisco/usr/sbin/ovs-vswitchd \
+		$(CURDIR)/debian/openvswitch-switch-cisco/usr/lib/openvswitch-switch/ovs-vswitchd
 	set -e && for pyvers in $(PYTHONS); do \
 		cd python && python$$pyvers setup.py install --install-layout=deb \
 			--root $(CURDIR)/debian/python-openvswitch; cd ..; \
@@ -105,8 +105,8 @@ endif
 
 override_dh_installinit:
 	dh_installinit --restart-after-upgrade
-	dh_installinit -popenvswitch-switch --name=ovsdb-server --no-start
-	dh_installinit -popenvswitch-switch --name=ovs-vswitchd --no-start
+	dh_installinit -popenvswitch-switch-cisco --name=ovsdb-server --no-start
+	dh_installinit -popenvswitch-switch-cisco --name=ovs-vswitchd --no-start
 
 override_dh_systemd_start:
 	dh_systemd_start --restart-after-upgrade -Xovs-vswitchd.service -Xovsdb-server.service

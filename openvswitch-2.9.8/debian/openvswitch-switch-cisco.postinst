@@ -1,5 +1,5 @@
 #!/bin/sh
-# postinst script for openvswitch-switch
+# postinst script for openvswitch-switch-cisco
 #
 # see: dh_installdeb(1)
 

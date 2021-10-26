@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Have a look at /usr/share/doc/openvswitch-switch/README.Debian
+# Have a look at /usr/share/doc/openvswitch-switch-cisco/README.Debian
 # for more information about configuring the /etc/network/interfaces.
 
 if [ -z "${IF_OVS_TYPE}" ]; then
