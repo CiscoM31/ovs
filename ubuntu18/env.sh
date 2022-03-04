@@ -34,4 +34,4 @@ export UPSTREAM_DIR=$GITHUB_WORKSPACE/ubuntu18/openvswitch-${UPSTREAM_VERSION}
 export SOURCE_PACKAGE_VERSION=${UPSTREAM_VERSION}-0ubuntu0.18.04.2
 
 # Name of the output directory and tarball
-export OUTNAME=ovs-with-primary-slave-interface
+export OUTNAME=ovs-ubuntu18-with-primary-slave-interface
