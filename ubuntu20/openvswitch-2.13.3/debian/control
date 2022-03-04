@@ -35,7 +35,9 @@ Vcs-Browser: https://git.launchpad.net/~ubuntu-server-dev/ubuntu/+source/openvsw
 Vcs-Git: git://git.launchpad.net/~ubuntu-server-dev/ubuntu/+source/openvswitch
 XS-Testsuite: autopkgtest
 
-Package: openvswitch-common
+Package: openvswitch-common-cisco
+Provides: openvswitch-common (= 2.13.3-0ubuntu0.20.04.2)
+Conflicts: openvswitch-common
 Architecture: linux-any
 Depends:
  openssl,
@@ -49,7 +51,7 @@ Suggests:
 Breaks:
  openvswitch-switch (<< 2.13.0~git20200212.15ae9db33-0ubuntu2~),
 Replaces:
- openvswitch-switch (<< 2.13.0~git20200212.15ae9db33-0ubuntu2~),
+ openvswitch-switch (<< 2.13.0~git20200212.15ae9db33-0ubuntu2~), openvswitch-common
 Description: Open vSwitch common components
  Open vSwitch is a production quality, multilayer, software-based,
  Ethernet virtual switch. It is designed to enable massive network
@@ -59,15 +61,15 @@ Description: Open vSwitch common components
  to support distribution across multiple physical servers similar to
  VMware's vNetwork distributed vswitch or Cisco's Nexus 1000V.
  .
- openvswitch-common provides components required by both openvswitch-switch
+ openvswitch-common-cisco provides components required by both openvswitch-switch-cisco
  and openvswitch-testcontroller.
 
 Package: openvswitch-dbg
 Section: debug
 Architecture: linux-any
 Depends:
- openvswitch-common (= ${binary:Version}),
- openvswitch-switch (= ${binary:Version}),
+ openvswitch-common-cisco (= ${binary:Version}),
+ openvswitch-switch-cisco (= ${binary:Version}),
  ${misc:Depends},
  ${shlibs:Depends},
 Description: Debug symbols for Open vSwitch packages
@@ -104,8 +106,8 @@ Description: Open vSwitch documentation
 Package: openvswitch-pki
 Architecture: all
 Depends:
- openvswitch-common (<< ${source:Version}.1~),
- openvswitch-common (>= ${source:Version}),
+ openvswitch-common-cisco (<< ${source:Version}.1~),
+ openvswitch-common-cisco (>= ${source:Version}),
  ${misc:Depends},
 Description: Open vSwitch public key infrastructure dependency package
  Open vSwitch is a production quality, multilayer, software-based,
@@ -136,12 +138,15 @@ Description: Open vSwitch source code
  This package contains the full Open vSwitch source code to support
  use with the Open Virtual Network (OVN) build.
 
-Package: openvswitch-switch
+Package: openvswitch-switch-cisco
+Provides: openvswitch-switch (= 2.13.3-0ubuntu0.20.04.2)
+Conflicts: openvswitch-switch
+Replaces: openvswitch-switch
 Architecture: linux-any
 Depends:
  kmod | module-init-tools,
  netbase,
- openvswitch-common (= ${binary:Version}),
+ openvswitch-common-cisco (= ${binary:Version}),
  procps,
  python3-netifaces,
  python3-openvswitch (>= ${source:Version}),
@@ -158,19 +163,19 @@ Description: Open vSwitch switch implementations
  to support distribution across multiple physical servers similar to
  VMware's vNetwork distributed vswitch or Cisco's Nexus 1000V.
  .
- openvswitch-switch provides the userspace components and utilities for
+ openvswitch-switch-cisco provides the userspace components and utilities for
  the Open vSwitch kernel-based switch.
 
 Package: openvswitch-switch-dpdk
 Architecture: amd64 arm64 i386 ppc64el
 Depends:
  dpdk,
- openvswitch-switch (= ${binary:Version}),
+ openvswitch-switch-cisco (= ${binary:Version}),
  ${misc:Depends},
  ${python3:Depends},
  ${shlibs:Depends},
 Enhances:
- openvswitch-switch,
+ openvswitch-switch-cisco,
 Description: DPDK enabled Open vSwitch switch implementation
  Open vSwitch is a production quality, multilayer, software-based,
  Ethernet virtual switch. It is designed to enable massive network
@@ -180,7 +185,7 @@ Description: DPDK enabled Open vSwitch switch implementation
  to support distribution across multiple physical servers similar to
  VMware's vNetwork distributed vswitch or Cisco's Nexus 1000V.
  .
- openvswitch-switch provides the userspace components and utilities for
+ openvswitch-switch-cisco provides the userspace components and utilities for
  the Open vSwitch kernel-based switch.
  .
  DPDK is a set of libraries for fast packet processing. Applications run
@@ -210,7 +215,7 @@ Description: Open vSwitch test package
 Package: openvswitch-testcontroller
 Architecture: linux-any
 Depends:
- openvswitch-common (= ${binary:Version}),
+ openvswitch-common-cisco (= ${binary:Version}),
  openvswitch-pki (= ${source:Version}),
  ${misc:Depends},
  ${shlibs:Depends},
@@ -228,8 +233,8 @@ Package: openvswitch-vtep
 Architecture: linux-any
 Depends:
  lsb-release,
- openvswitch-common (>= ${binary:Version}),
- openvswitch-switch (>= ${binary:Version}),
+ openvswitch-common-cisco (>= ${binary:Version}),
+ openvswitch-switch-cisco (>= ${binary:Version}),
  python3-openvswitch (>= ${source:Version}),
  ${misc:Depends},
  ${python3:Depends},

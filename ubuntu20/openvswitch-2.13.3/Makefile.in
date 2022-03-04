@@ -1691,15 +1691,15 @@ EXTRA_DIST = AUTHORS.rst CONTRIBUTING.rst LICENSE MAINTAINERS.rst \
 	debian/openvswitch-ipsec.dirs debian/openvswitch-ipsec.init \
 	debian/openvswitch-ipsec.install debian/openvswitch-pki.dirs \
 	debian/openvswitch-pki.postinst debian/openvswitch-pki.postrm \
-	debian/openvswitch-switch.README.Debian \
-	debian/openvswitch-switch.dirs debian/openvswitch-switch.init \
-	debian/openvswitch-switch.install \
-	debian/openvswitch-switch.logrotate \
-	debian/openvswitch-switch.manpages \
-	debian/openvswitch-switch.postinst \
-	debian/openvswitch-switch.postrm \
-	debian/openvswitch-switch.template \
-	debian/openvswitch-switch.links debian/openvswitch-test.dirs \
+	debian/openvswitch-switch-cisco.README.Debian \
+	debian/openvswitch-switch-cisco.dirs debian/openvswitch-switch-cisco.init \
+	debian/openvswitch-switch-cisco.install \
+	debian/openvswitch-switch-cisco.logrotate \
+	debian/openvswitch-switch-cisco.manpages \
+	debian/openvswitch-switch-cisco.postinst \
+	debian/openvswitch-switch-cisco.postrm \
+	debian/openvswitch-switch-cisco.template \
+	debian/openvswitch-switch-cisco.links debian/openvswitch-test.dirs \
 	debian/openvswitch-test.install \
 	debian/openvswitch-test.manpages \
 	debian/openvswitch-testcontroller.README.Debian \

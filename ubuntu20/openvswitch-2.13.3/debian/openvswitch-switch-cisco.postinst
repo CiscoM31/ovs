@@ -1,5 +1,5 @@
 #!/bin/sh
-# postinst script for openvswitch-switch
+# postinst script for openvswitch-switch-cisco
 #
 # see: dh_installdeb(1)
 
@@ -21,7 +21,7 @@ set -e
 case "$1" in
     configure)
         update-alternatives --install /usr/sbin/ovs-vswitchd ovs-vswitchd \
-            /usr/lib/openvswitch-switch/ovs-vswitchd 100
+            /usr/lib/openvswitch-switch-cisco/ovs-vswitchd 100
         mkdir -p /var/lib/openvswitch
 
 	# Ensure that /etc/openvswitch/conf.db links to /var/lib/openvswitch,

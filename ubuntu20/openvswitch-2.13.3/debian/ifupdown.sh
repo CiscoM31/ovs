@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Have a look at /usr/share/doc/openvswitch-switch/README.Debian
+# Have a look at /usr/share/doc/openvswitch-switch-cisco/README.Debian
 # for more information about configuring the /etc/network/interfaces.
 
 if [ -z "${IF_OVS_TYPE}" ]; then
@@ -35,8 +35,8 @@ if [ -f $SERVICE_UNIT ] && [ -x /usr/bin/systemctl ]; then
         systemctl start openvswitch-nonetwork.service
     fi
 else
-    if service openvswitch-switch status > /dev/null 2>&1; then
-        service openvswitch-switch start
+    if service openvswitch-switch-cisco status > /dev/null 2>&1; then
+        service openvswitch-switch-cisco start
     fi
 fi
 

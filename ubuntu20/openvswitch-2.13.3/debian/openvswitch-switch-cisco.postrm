@@ -1,5 +1,5 @@
 #!/bin/sh
-# postrm script for openvswitch-switch
+# postrm script for openvswitch-switch-cisco
 #
 # see: dh_installdeb(1)
 
@@ -23,7 +23,7 @@ case "$1" in
     purge)
         rm -f /etc/openvswitch/conf.db
         rm -f /etc/openvswitch/.conf.db.~lock~
-        rm -f /etc/default/openvswitch-switch
+        rm -f /etc/default/openvswitch-switch-cisco
         rm -f /var/log/openvswitch/ovs-vswitchd.log* || true
         rm -f /var/log/openvswitch/ovsdb-server.log* || true
         rm -f /etc/openvswitch/system-id.conf

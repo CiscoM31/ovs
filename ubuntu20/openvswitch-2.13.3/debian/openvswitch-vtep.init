@@ -25,8 +25,8 @@ start () {
         exit 0
     fi
 
-    update-rc.d -f openvswitch-switch remove >/dev/null 2>&1
-    /etc/init.d/openvswitch-switch stop
+    update-rc.d -f openvswitch-switch-cisco remove >/dev/null 2>&1
+    /etc/init.d/openvswitch-switch-cisco stop
 
     mkdir -p "/var/run/openvswitch"
 
@@ -58,7 +58,7 @@ start () {
 }
 
 stop () {
-    /etc/init.d/openvswitch-switch stop
+    /etc/init.d/openvswitch-switch-cisco stop
 }
 
 case $1 in
