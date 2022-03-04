@@ -2,14 +2,14 @@
 Description=Open vSwitch Database Unit
 After=syslog.target network-pre.target dpdk.service local-fs.target
 Before=network.target networking.service
-PartOf=openvswitch-switch.service
+PartOf=openvswitch-switch-cisco.service
 DefaultDependencies=no
 
 [Service]
 LimitNOFILE=1048576
 Type=forking
 Restart=on-failure
-EnvironmentFile=-/etc/default/openvswitch-switch
+EnvironmentFile=-/etc/default/openvswitch-switch-cisco
 ExecStart=/usr/share/openvswitch/scripts/ovs-ctl \
           --no-ovs-vswitchd --no-monitor --system-id=random \
           --no-record-hostname \

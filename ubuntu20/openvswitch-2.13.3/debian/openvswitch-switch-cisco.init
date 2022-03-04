@@ -15,13 +15,13 @@
 # limitations under the License.
 #
 ### BEGIN INIT INFO
-# Provides:          openvswitch-switch
+# Provides:          openvswitch-switch-cisco
 # Required-Start:    $network $named $remote_fs $syslog
 # Required-Stop:     $remote_fs
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
 # Short-Description: Open vSwitch switch
-# Description:       openvswitch-switch provides the userspace components and utilities for
+# Description:       openvswitch-switch-cisco provides the userspace components and utilities for
 #                    the Open vSwitch kernel-based switch.
 ### END INIT INFO
 
@@ -32,7 +32,7 @@ _SYSTEMCTL_SKIP_REDIRECT=yes
 . /lib/lsb/init-functions
 
 . /usr/share/openvswitch/scripts/ovs-lib
-test -e /etc/default/openvswitch-switch && . /etc/default/openvswitch-switch
+test -e /etc/default/openvswitch-switch-cisco && . /etc/default/openvswitch-switch-cisco
 
 network_interfaces () {
     INTERFACES="/etc/network/interfaces"

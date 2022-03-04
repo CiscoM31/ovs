@@ -17,7 +17,7 @@ fi
 
 update-alternatives --set ovs-vswitchd \
     /usr/lib/openvswitch-switch-dpdk/ovs-vswitchd-dpdk
-service openvswitch-switch restart
+service openvswitch-switch-cisco restart
 
 modprobe openvswitch || true
 

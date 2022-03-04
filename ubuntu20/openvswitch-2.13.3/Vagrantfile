@@ -108,9 +108,9 @@ tar xzf openvswitch_$PACKAGE_VERSION.orig.tar.gz
 cd ~/openvswitch-$PACKAGE_VERSION
 debuild -us -uc
 dpkg -i ../openvswitch-{common,switch}*deb
-systemctl enable openvswitch-switch
-systemctl start openvswitch-switch
-systemctl status openvswitch-switch
+systemctl enable openvswitch-switch-cisco
+systemctl start openvswitch-switch-cisco
+systemctl status openvswitch-switch-cisco
 SCRIPT
 
 $test_ovs_system_userspace = <<SCRIPT

@@ -5,20 +5,20 @@ EXTRA_DIST += \
 	debian/copyright \
 	debian/copyright.in \
 	debian/dirs \
-	debian/openvswitch-common.dirs \
-	debian/openvswitch-common.install \
+	debian/openvswitch-common-cisco.dirs \
+	debian/openvswitch-common-cisco.install \
 	debian/openvswitch-pki.dirs \
 	debian/openvswitch-pki.postinst \
 	debian/openvswitch-pki.postrm \
-	debian/openvswitch-switch.README.Debian \
-	debian/openvswitch-switch.dirs \
-	debian/openvswitch-switch.init \
-	debian/openvswitch-switch.install \
-	debian/openvswitch-switch.logrotate \
-	debian/openvswitch-switch.postinst \
-	debian/openvswitch-switch.postrm \
-	debian/openvswitch-switch.default \
-	debian/openvswitch-switch.links \
+	debian/openvswitch-switch-cisco.README.Debian \
+	debian/openvswitch-switch-cisco.dirs \
+	debian/openvswitch-switch-cisco.init \
+	debian/openvswitch-switch-cisco.install \
+	debian/openvswitch-switch-cisco.logrotate \
+	debian/openvswitch-switch-cisco.postinst \
+	debian/openvswitch-switch-cisco.postrm \
+	debian/openvswitch-switch-cisco.default \
+	debian/openvswitch-switch-cisco.links \
 	debian/openvswitch-test.install \
 	debian/openvswitch-testcontroller.README.Debian \
 	debian/openvswitch-testcontroller.default \

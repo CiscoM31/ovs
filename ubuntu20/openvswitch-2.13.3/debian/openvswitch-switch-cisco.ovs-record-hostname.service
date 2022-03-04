@@ -15,4 +15,4 @@ TimeoutSec=300
 RemainAfterExit=yes
 
 [Install]
-RequiredBy=openvswitch-switch.service
+RequiredBy=openvswitch-switch-cisco.service
