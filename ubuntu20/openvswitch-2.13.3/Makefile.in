@@ -1713,8 +1713,8 @@ EXTRA_DIST = AUTHORS.rst CONTRIBUTING.rst LICENSE MAINTAINERS.rst \
 	debian/openvswitch-vtep.default debian/openvswitch-vtep.dirs \
 	debian/openvswitch-vtep.init debian/openvswitch-vtep.install \
 	debian/openvswitch-vtep.manpages \
-	debian/python3-openvswitch.dirs \
-	debian/python3-openvswitch.install debian/rules \
+	debian/python3-openvswitch-cisco.dirs \
+	debian/python3-openvswitch-cisco.install debian/rules \
 	debian/rules.modules debian/ifupdown.sh debian/source/format \
 	ipsec/ovs-monitor-ipsec.in vswitchd/vswitch.ovsschema \
 	vswitchd/vswitch.xml ovsdb/ovsdb-idlc.in ovsdb/ovsdb-doc \
