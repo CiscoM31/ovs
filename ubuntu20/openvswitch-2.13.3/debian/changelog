@@ -1,3 +1,21 @@
+openvswitch (@UPSTREAM_VERSION@@CISCO_VERSION@) bionic-security; urgency=medium
+
+  * This is the Cisco OVS package, forked from the Ubuntu 20.04
+    http://archive.ubuntu.com/ubuntu/pool/main/o/openvswitch/openvswitch_2.13.3.orig.tar.xz
+    and
+    http://archive.ubuntu.com/ubuntu/pool/main/o/openvswitch/openvswitch_2.13.3-0ubuntu0.20.04.2.debian.tar.xz
+    source packages.  This package is identical to the original Ubuntu
+    package, with the exception that two additional patches were added
+    to this package, backported from the OVS repository:
+    https://github.com/openvswitch/ovs/commit/b4e50218a0f8da43ffe7c420826ddb19985b0b03
+    and
+    https://github.com/openvswitch/ovs/commit/07d5758b032bc774d1e38fc79eaf356ea9302bdf.
+    Additionally, a cisco-package-version.json file was added to the
+    resulting .deb file in order to identify relevant version numbers
+    in the package.
+
+ -- Jeff Squyres <jsquyres@cisco.com>  Fri, 05 Mar 2022 07:27:58 -0400
+
 openvswitch (2.13.3-0ubuntu0.20.04.2) focal-security; urgency=medium
 
   * SECURITY UPDATE: use-after-free in decode_NXAST_RAW_ENCAP
