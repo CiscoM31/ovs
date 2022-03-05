@@ -149,7 +149,7 @@ Depends:
  openvswitch-common-cisco (= ${binary:Version}),
  procps,
  python3-netifaces,
- python3-openvswitch (>= ${source:Version}),
+ python3-openvswitch-cisco (>= ${source:Version}),
  uuid-runtime,
  ${misc:Depends},
  ${python3:Depends},
@@ -235,7 +235,7 @@ Depends:
  lsb-release,
  openvswitch-common-cisco (>= ${binary:Version}),
  openvswitch-switch-cisco (>= ${binary:Version}),
- python3-openvswitch (>= ${source:Version}),
+ python3-openvswitch-cisco (>= ${source:Version}),
  ${misc:Depends},
  ${python3:Depends},
  ${shlibs:Depends},
@@ -251,7 +251,7 @@ Description: Open vSwitch VTEP utilities
  This package provides utilities that are useful to interact with a
  VTEP-configured database and a VTEP emulator.
 
-Package: python3-openvswitch
+Package: python3-openvswitch-cisco
 Architecture: all
 Section: python
 Depends:

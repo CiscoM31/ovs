@@ -93,7 +93,7 @@ override_dh_install:
 	done
 	set -e && for pyvers in $(PYTHON3S); do \
         cd python && python$$pyvers setup.py install --install-layout=deb \
-            --root $(CURDIR)/debian/python3-openvswitch; cd ..; \
+            --root $(CURDIR)/debian/python3-openvswitch-cisco; cd ..; \
         mkdir -p $(CURDIR)/debian/openvswitch-test/usr/lib/python$$pyvers/dist-packages/ovstest; \
         install -v -D python/ovstest/*.py \
             $(CURDIR)/debian/openvswitch-test/usr/lib/python$$pyvers/dist-packages/ovstest; \
