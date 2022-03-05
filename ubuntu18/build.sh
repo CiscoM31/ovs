@@ -26,7 +26,8 @@ $GITHUB_WORKSPACE/tools/create-version-json.sh \
     $SOURCE_PACKAGE_VERSION "$CISCO_VERSION" \
     cisco-package-version.json
 
-echo cisco-package-version.json >> debian/libpam0g-cisco.docs
+echo cisco-package-version.json >> debian/openvswitch-switch-cisco.docs
+echo cisco-package-version.json >> debian/openvswitch-common-cisco.docs
 
 # Do the actual build
 debuild -i --build=binary -us -uc

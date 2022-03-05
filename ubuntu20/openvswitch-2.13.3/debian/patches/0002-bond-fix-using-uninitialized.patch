@@ -1,0 +1,73 @@
+commit 07d5758b032bc774d1e38fc79eaf356ea9302bdf
+Author: Ilya Maximets <i.maximets@ovn.org>
+Date:   Tue Oct 13 12:02:10 2020 +0200
+
+    bond: Fix using uninitialized 'lacp_fallback_ab_cfg' for 'bond-primary'.
+    
+    's->lacp_fallback_ab_cfg' initialized down below in the code, so
+    we're using it uninitialized to detect if we need to get 'bond-primary'
+    configuration.
+    
+    Found by valgrind:
+    
+     Conditional jump or move depends on uninitialised value(s)
+        at 0x409114: port_configure_bond (bridge.c:4569)
+        by 0x409114: port_configure (bridge.c:1284)
+        by 0x40F6E6: bridge_reconfigure (bridge.c:917)
+        by 0x411425: bridge_run (bridge.c:3330)
+        by 0x406D84: main (ovs-vswitchd.c:127)
+      Uninitialised value was created by a stack allocation
+        at 0x408C53: port_configure (bridge.c:1190)
+    
+    Fix that by moving this code to the point where 'lacp_fallback_ab_cfg'
+    already initialized.  Additionally clarified behavior of 'bond-primary'
+    in manpages for the fallback to AB case.
+    
+    Fixes: b4e50218a0f8 ("bond: Add 'primary' interface concept for active-backup mode.")
+    Acked-by: Jeff Squyres <jsquyres@cisco.com>
+    Acked-by: Alin Gabriel Serdean <aserdean@cloudbasesolutions.com>
+    Signed-off-by: Ilya Maximets <i.maximets@ovn.org>
+
+diff --git a/vswitchd/bridge.c b/vswitchd/bridge.c
+index 62697e89b..103b821bb 100644
+--- a/vswitchd/bridge.c
++++ b/vswitchd/bridge.c
+@@ -4564,11 +4564,6 @@ port_configure_bond(struct port *port, struct bond_settings *s)
+                   port->name);
+     }
+ 
+-    s->primary = NULL;
+-    if (s->balance == BM_AB || s->lacp_fallback_ab_cfg) {
+-        s->primary = smap_get(&port->cfg->other_config, "bond-primary");
+-    }
+-
+     miimon_interval = smap_get_int(&port->cfg->other_config,
+                                    "bond-miimon-interval", 0);
+     if (miimon_interval <= 0) {
+@@ -4595,6 +4590,10 @@ port_configure_bond(struct port *port, struct bond_settings *s)
+ 
+     s->lacp_fallback_ab_cfg = smap_get_bool(&port->cfg->other_config,
+                                        "lacp-fallback-ab", false);
++    s->primary = NULL;
++    if (s->balance == BM_AB || s->lacp_fallback_ab_cfg) {
++        s->primary = smap_get(&port->cfg->other_config, "bond-primary");
++    }
+ 
+     LIST_FOR_EACH (iface, port_elem, &port->ifaces) {
+         netdev_set_miimon_interval(iface->netdev, miimon_interval);
+diff --git a/vswitchd/vswitch.xml b/vswitchd/vswitch.xml
+index 0e25e018e..a6b70a2f9 100644
+--- a/vswitchd/vswitch.xml
++++ b/vswitchd/vswitch.xml
+@@ -2008,7 +2008,10 @@
+         If a slave interface with this name exists in the bond and
+         is up, it will be made active.  Relevant only when <ref
+         column="other_config" key="bond_mode"/> is
+-        <code>active-backup</code>.
++        <code>active-backup</code> or if <code>balance-tcp</code> falls back
++        to <code>active-backup</code> (e.g., LACP negotiation fails and
++        <ref column="other_config" key="lacp-fallback-ab"/> is
++        <code>true</code>).
+       </column>
+ 
+       <group title="Link Failure Detection">

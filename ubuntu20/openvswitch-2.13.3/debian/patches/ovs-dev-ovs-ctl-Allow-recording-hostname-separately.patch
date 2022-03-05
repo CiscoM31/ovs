@@ -1,0 +1,114 @@
+From 556e65e17991a5b165bc8697d2e4da266afada67 Mon Sep 17 00:00:00 2001
+From: Frode Nordahl <frode.nordahl@canonical.com>
+Date: Thu, 25 Feb 2021 16:28:16 +0100
+Subject: [PATCH] ovs-ctl: Allow recording hostname separately.
+
+ovs-ctl determines the system FQDN or hostname and records it in
+the `external-ids:hostname` field of the `Open-vSwitch` table on
+system startup if it is not already set.
+
+This value may be consumed by downstream software and having it
+unset or set to a incorrect value could lead to erratic behavior
+of a system.
+
+When a system is configured to use an Open vSwitch controlled
+datapath as its only network connection, the current ordering of
+events would always record a unreliable hostname.
+
+To tackle this problem this patch adds an optional argument that
+allows starting Open vSwitch without recording the hostname in
+the database as well as a new ctl command to record the hostname
+separately. This command can be called by the system startup
+scripts when the system is ready to collect and record this
+information.
+
+Reported-At: https://bugs.launchpad.net/bugs/1915829
+Signed-off-by: Frode Nordahl <frode.nordahl@canonical.com>
+Signed-off-by: Ilya Maximets <i.maximets@ovn.org>
+Origin: https://github.com/openvswitch/ovs/commit/556e65e17991a5b165bc8697d2e4da266afada67
+Applied-Upstream: https://github.com/openvswitch/ovs/commit/2ad201659cedbb1134a9d27af132e491173c7e40
+---
+ NEWS                 |  5 +++++
+ utilities/ovs-ctl.in | 41 +++++++++++++++++++++++++++--------------
+ 2 files changed, 32 insertions(+), 14 deletions(-)
+
+Index: openvswitch-2.13.1/utilities/ovs-ctl.in
+===================================================================
+--- openvswitch-2.13.1.orig/utilities/ovs-ctl.in
++++ openvswitch-2.13.1/utilities/ovs-ctl.in
+@@ -225,7 +225,9 @@ start_forwarding () {
+     if test X"$OVS_VSWITCHD" = Xyes; then
+         do_start_forwarding || return 1
+     fi
+-    set_hostname &
++    if test X"$RECORD_HOSTNAME" = Xyes; then
++        set_hostname &
++    fi
+     return 0
+ }
+ 
+@@ -312,6 +314,7 @@ set_defaults () {
+     SYSTEM_ID=
+ 
+     FULL_HOSTNAME=yes
++    RECORD_HOSTNAME=yes
+ 
+     DELETE_BRIDGES=no
+     DELETE_TRANSIENT_PORTS=no
+@@ -372,19 +375,24 @@ This program is intended to be invoked i
+ scripts.  System administrators should not normally invoke it directly.
+ 
+ Commands:
+-  start                   start Open vSwitch daemons
+-  stop                    stop Open vSwitch daemons
+-  restart                 stop and start Open vSwitch daemons
+-  status                  check whether Open vSwitch daemons are running
+-  version                 print versions of Open vSwitch daemons
+-  load-kmod               insert modules if not already present
+-  force-reload-kmod       save OVS network device state, stop OVS, unload kernel
+-                          module, reload kernel module, start OVS, restore state
+-  enable-protocol         enable protocol specified in options with iptables
+-  delete-transient-ports  delete transient (other_config:transient=true) ports
+-  start-ovs-ipsec         start Open vSwitch ipsec daemon
+-  stop-ovs-ipsec          stop Open vSwitch ipsec daemon
+-  help                    display this help message
++  start                       start Open vSwitch daemons
++  stop                        stop Open vSwitch daemons
++  restart                     stop and start Open vSwitch daemons
++  status                      check whether Open vSwitch daemons are running
++  version                     print versions of Open vSwitch daemons
++  load-kmod                   insert modules if not already present
++  force-reload-kmod           save OVS network device state, stop OVS, unload
++                              kernel module, reload kernel module, start OVS,
++                              restore state
++  enable-protocol             enable protocol specified in options with
++                              iptables
++  delete-transient-ports      delete transient (other_config:transient=true)
++                              ports
++  start-ovs-ipsec             start Open vSwitch ipsec daemon
++  stop-ovs-ipsec              stop Open vSwitch ipsec daemon
++  record-hostname-if-not-set  determine the system hostname and record it in
++                              the Open vSwitch database if not already set
++  help                        display this help message
+ 
+ One of the following options is required for "start", "restart" and "force-reload-kmod":
+   --system-id=UUID   set specific ID to uniquely identify this system
+@@ -405,6 +413,8 @@ Less important options for "start", "res
+   --ovsdb-server-priority=NICE   set ovsdb-server's niceness (default: $OVSDB_SERVER_PRIORITY)
+   --ovs-vswitchd-priority=NICE   set ovs-vswitchd's niceness (default: $OVS_VSWITCHD_PRIORITY)
+   --no-full-hostname             set short hostname instead of full hostname
++  --no-record-hostname           do not attempt to determine/record system
++                                 hostname as part of start command
+ 
+ Debugging options for "start", "restart" and "force-reload-kmod":
+   --ovsdb-server-wrapper=WRAPPER
+@@ -561,6 +571,9 @@ case $command in
+     stop-ovs-ipsec)
+         stop_ovs_ipsec
+         ;;
++    record-hostname-if-not-set)
++        set_hostname
++        ;;
+     help)
+         usage
+         ;;

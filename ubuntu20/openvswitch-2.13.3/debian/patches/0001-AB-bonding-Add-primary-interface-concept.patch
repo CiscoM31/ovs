@@ -1,0 +1,585 @@
+commit b4e50218a0f8da43ffe7c420826ddb19985b0b03
+Author: Jeff Squyres <jsquyres@cisco.com>
+Date:   Thu Jul 9 16:57:47 2020 -0700
+
+    bond: Add 'primary' interface concept for active-backup mode.
+    
+    In AB bonding, if the current active slave becomes disabled, a
+    replacement slave is arbitrarily picked from the remaining set of
+    enabled slaves.  This commit adds the concept of a "primary" slave: an
+    interface that will always be (or become) the current active slave if
+    it is enabled.
+    
+    The rationale for this functionality is to allow the designation of a
+    preferred interface for a given bond.  For example:
+    
+    1. Bond is created with interfaces p1 (primary) and p2, both enabled.
+    2. p1 becomes the current active slave (because it was designated as
+       the primary).
+    3. Later, p1 fails/becomes disabled.
+    4. p2 is chosen to become the current active slave.
+    5. Later, p1 becomes re-enabled.
+    6. p1 is chosen to become the current active slave (because it was
+       designated as the primary)
+    
+    Note that p1 becomes the active slave once it becomes re-enabled, even
+    if nothing has happened to p2.
+    
+    This "primary" concept exists in Linux kernel network interface
+    bonding, but did not previously exist in OVS bonding.
+    
+    Only one primary slave interface is supported per bond, and is only
+    supported for active/backup bonding.
+    
+    The primary slave interface is designated via
+    "other_config:bond-primary" when creating a bond.
+    
+    Also, while adding tests for the "primary" concept, make a few small
+    improvements to the non-primary AB bonding test.
+    
+    Signed-off-by: Jeff Squyres <jsquyres@cisco.com>
+    Reviewed-by: Aaron Conole <aconole@redhat.com>
+    Tested-by: Greg Rose <gvrose8192@gmail.com>
+    Acked-by: Greg Rose <gvrose8192@gmail.com>
+    Acked-by: Flavio Leitner <fbl@sysclose.org>
+    Signed-off-by: Ilya Maximets <i.maximets@ovn.org>
+
+diff --git a/ofproto/bond.c b/ofproto/bond.c
+index 2466c4d02..40c9408bc 100644
+--- a/ofproto/bond.c
++++ b/ofproto/bond.c
+@@ -89,6 +89,7 @@ struct bond_slave {
+     /* Link status. */
+     bool enabled;               /* May be chosen for flows? */
+     bool may_enable;            /* Client considers this slave bondable. */
++    bool is_primary;            /* This slave is preferred over others. */
+     long long delay_expires;    /* Time after which 'enabled' may change. */
+ 
+     /* Rebalancing info.  Used only by bond_rebalance(). */
+@@ -124,6 +125,7 @@ struct bond {
+     enum lacp_status lacp_status; /* Status of LACP negotiations. */
+     bool bond_revalidate;       /* True if flows need revalidation. */
+     uint32_t basis;             /* Basis for flow hash function. */
++    char *primary;              /* Name of the primary slave interface. */
+ 
+     /* SLB specific bonding info. */
+     struct bond_entry *hash;     /* An array of BOND_BUCKETS elements. */
+@@ -241,6 +243,7 @@ bond_create(const struct bond_settings *s, struct ofproto_dpif *ofproto)
+ 
+     bond->active_slave_mac = eth_addr_zero;
+     bond->active_slave_changed = false;
++    bond->primary = NULL;
+ 
+     bond_reconfigure(bond, s);
+     return bond;
+@@ -294,6 +297,7 @@ bond_unref(struct bond *bond)
+     update_recirc_rules__(bond);
+ 
+     hmap_destroy(&bond->pr_rule_ops);
++    free(bond->primary);
+     free(bond->name);
+     free(bond);
+ }
+@@ -471,6 +475,12 @@ bond_reconfigure(struct bond *bond, const struct bond_settings *s)
+         bond->bond_revalidate = false;
+     }
+ 
++    if (!nullable_string_is_equal(bond->primary, s->primary)) {
++        free(bond->primary);
++        bond->primary = nullable_xstrdup(s->primary);
++        revalidate = true;
++    }
++
+     if (bond->balance != BM_AB) {
+         if (!bond->recirc_id) {
+             bond->recirc_id = recirc_alloc_id(bond->ofproto);
+@@ -586,6 +596,11 @@ bond_slave_register(struct bond *bond, void *slave_,
+ 
+     free(slave->name);
+     slave->name = xstrdup(netdev_get_name(netdev));
++    if (bond->primary && !strcmp(bond->primary, slave->name)) {
++        slave->is_primary = true;
++    } else {
++        slave->is_primary = false;
++    }
+     ovs_rwlock_unlock(&rwlock);
+ }
+ 
+@@ -671,7 +686,7 @@ bond_slave_set_may_enable(struct bond *bond, void *slave_, bool may_enable)
+ bool
+ bond_run(struct bond *bond, enum lacp_status lacp_status)
+ {
+-    struct bond_slave *slave;
++    struct bond_slave *slave, *primary;
+     bool revalidate;
+ 
+     ovs_rwlock_wrlock(&rwlock);
+@@ -688,11 +703,19 @@ bond_run(struct bond *bond, enum lacp_status lacp_status)
+     }
+ 
+     /* Enable slaves based on link status and LACP feedback. */
++    primary = NULL;
+     HMAP_FOR_EACH (slave, hmap_node, &bond->slaves) {
+         bond_link_status_update(slave);
+         slave->change_seq = seq_read(connectivity_seq_get());
++
++        /* Discover if there is an active slave marked 'primary'. */
++        if (bond->balance == BM_AB && slave->is_primary && slave->enabled) {
++            primary = slave;
++        }
+     }
+-    if (!bond->active_slave || !bond->active_slave->enabled) {
++
++    if (!bond->active_slave || !bond->active_slave->enabled ||
++        (primary && bond->active_slave != primary)) {
+         bond_choose_active_slave(bond);
+     }
+ 
+@@ -1440,16 +1463,25 @@ bond_print_details(struct ds *ds, const struct bond *bond)
+     ds_put_format(ds, "lacp_fallback_ab: %s\n",
+                   bond->lacp_fallback_ab ? "true" : "false");
+ 
++    bool found_primary = false;
++    HMAP_FOR_EACH (slave, hmap_node, &bond->slaves) {
++        if (slave->is_primary) {
++            found_primary = true;
++        }
++        shash_add(&slave_shash, slave->name, slave);
++    }
++
++    ds_put_format(ds, "active-backup primary: %s%s\n",
++                  bond->primary ? bond->primary : "<none>",
++                  (!found_primary && bond->primary)
++                  ? " (no such slave)" : "");
++
++    slave = bond_find_slave_by_mac(bond, bond->active_slave_mac);
+     ds_put_cstr(ds, "active slave mac: ");
+     ds_put_format(ds, ETH_ADDR_FMT, ETH_ADDR_ARGS(bond->active_slave_mac));
+-    slave = bond_find_slave_by_mac(bond, bond->active_slave_mac);
+     ds_put_format(ds,"(%s)\n", slave ? slave->name : "none");
+ 
+-    HMAP_FOR_EACH (slave, hmap_node, &bond->slaves) {
+-        shash_add(&slave_shash, slave->name, slave);
+-    }
+     sorted_slaves = shash_sort(&slave_shash);
+-
+     for (i = 0; i < shash_count(&slave_shash); i++) {
+         struct bond_entry *be;
+ 
+@@ -1909,6 +1941,13 @@ bond_choose_slave(const struct bond *bond)
+ {
+     struct bond_slave *slave, *best;
+ 
++    /* If there's a primary and it's active, return that. */
++    HMAP_FOR_EACH (slave, hmap_node, &bond->slaves) {
++        if (slave->is_primary && slave->enabled) {
++            return slave;
++        }
++    }
++
+     /* Find the last active slave. */
+     slave = bond_find_slave_by_mac(bond, bond->active_slave_mac);
+     if (slave && slave->enabled) {
+diff --git a/ofproto/bond.h b/ofproto/bond.h
+index 40c3258dc..ecb90919c 100644
+--- a/ofproto/bond.h
++++ b/ofproto/bond.h
+@@ -48,6 +48,8 @@ struct bond_settings {
+     int rebalance_interval;     /* Milliseconds between rebalances.
+                                    Zero to disable rebalancing. */
+ 
++    const char *primary;        /* For AB mode, primary interface name. */
++
+     /* Link status detection. */
+     int up_delay;               /* ms before enabling an up slave. */
+     int down_delay;             /* ms before disabling a down slave. */
+diff --git a/tests/lacp.at b/tests/lacp.at
+index df1691731..5257f0cce 100644
+--- a/tests/lacp.at
++++ b/tests/lacp.at
+@@ -126,6 +126,7 @@ updelay: 0 ms
+ downdelay: 0 ms
+ lacp_status: negotiated
+ lacp_fallback_ab: false
++active-backup primary: <none>
+ active slave mac: 00:00:00:00:00:00(none)
+ 
+ slave p1: disabled
+@@ -292,6 +293,7 @@ updelay: 0 ms
+ downdelay: 0 ms
+ lacp_status: negotiated
+ lacp_fallback_ab: false
++active-backup primary: <none>
+ 
+ slave p0: enabled
+ 	may_enable: true
+@@ -308,6 +310,7 @@ updelay: 0 ms
+ downdelay: 0 ms
+ lacp_status: negotiated
+ lacp_fallback_ab: false
++active-backup primary: <none>
+ 
+ slave p2: enabled
+ 	may_enable: true
+@@ -431,6 +434,7 @@ updelay: 0 ms
+ downdelay: 0 ms
+ lacp_status: negotiated
+ lacp_fallback_ab: false
++active-backup primary: <none>
+ <active slave mac del>
+ 
+ slave p0: disabled
+@@ -449,6 +453,7 @@ updelay: 0 ms
+ downdelay: 0 ms
+ lacp_status: negotiated
+ lacp_fallback_ab: false
++active-backup primary: <none>
+ <active slave mac del>
+ 
+ slave p2: disabled
+@@ -565,6 +570,7 @@ updelay: 0 ms
+ downdelay: 0 ms
+ lacp_status: negotiated
+ lacp_fallback_ab: false
++active-backup primary: <none>
+ <active slave mac del>
+ 
+ slave p0: disabled
+@@ -583,6 +589,7 @@ updelay: 0 ms
+ downdelay: 0 ms
+ lacp_status: negotiated
+ lacp_fallback_ab: false
++active-backup primary: <none>
+ <active slave mac del>
+ 
+ slave p2: disabled
+@@ -704,6 +711,7 @@ updelay: 0 ms
+ downdelay: 0 ms
+ lacp_status: negotiated
+ lacp_fallback_ab: false
++active-backup primary: <none>
+ <active slave mac del>
+ 
+ slave p0: enabled
+@@ -722,6 +730,7 @@ updelay: 0 ms
+ downdelay: 0 ms
+ lacp_status: negotiated
+ lacp_fallback_ab: false
++active-backup primary: <none>
+ <active slave mac del>
+ 
+ slave p2: enabled
+diff --git a/tests/ofproto-dpif.at b/tests/ofproto-dpif.at
+index c1455d8aa..feabb7380 100644
+--- a/tests/ofproto-dpif.at
++++ b/tests/ofproto-dpif.at
+@@ -29,12 +29,16 @@ AT_CHECK([ovs-appctl revalidator/wait])
+ OVS_VSWITCHD_STOP
+ AT_CLEANUP
+ 
+-AT_SETUP([ofproto-dpif - active-backup bonding])
+-# Create br0 with interfaces p1, p2 and p7, creating bond0 with p1 and p2
+-#    and br1 with interfaces p3, p4 and p8.
+-# toggle p1,p2 of bond0 up and down to test bonding in active-backup mode.
++AT_SETUP([ofproto-dpif - active-backup bonding (with primary)])
++
++dnl Create br0 with interfaces p1, p2 and p7, creating bond0 with p1 and
++dnl    p2 (p1 as primary) and br1 with interfaces p3, p4 and p8.
++dnl toggle p1,p2 of bond0 up and down to test bonding in active-backup mode.
++dnl With p1 down and p2 up/active, bring p1 back up.  Since p1 is the primary,
++dnl it should become active.
+ OVS_VSWITCHD_START(
+-  [add-bond br0 bond0 p1 p2 bond_mode=active-backup --\
++  [add-bond br0 bond0 p1 p2 bond_mode=active-backup \
++                other_config:bond-primary=p1 -- \
+    set interface p1 type=dummy options:pstream=punix:$OVS_RUNDIR/p1.sock ofport_request=1 -- \
+    set interface p2 type=dummy options:pstream=punix:$OVS_RUNDIR/p2.sock ofport_request=2 -- \
+    add-port br0 p7 -- set interface p7 ofport_request=7 type=dummy -- \
+@@ -45,8 +49,228 @@ OVS_VSWITCHD_START(
+    add-port br1 p3 -- set interface p3 type=dummy options:stream=unix:$OVS_RUNDIR/p1.sock ofport_request=3 -- \
+    add-port br1 p4 -- set interface p4 type=dummy options:stream=unix:$OVS_RUNDIR/p2.sock ofport_request=4 -- \
+    add-port br1 p8 -- set interface p8 ofport_request=8 type=dummy --])
++AT_CHECK([ovs-appctl vlog/set dpif:dbg dpif_netdev:dbg])
+ WAIT_FOR_DUMMY_PORTS([p3], [p4])
++OVS_WAIT_UNTIL([test -n "`ovs-appctl bond/show | grep 'active-backup primary: p1'`"])
++
++
++AT_CHECK([ovs-ofctl add-flow br0 action=normal])
++AT_CHECK([ovs-ofctl add-flow br1 action=normal])
++ovs-appctl netdev-dummy/set-admin-state up
++ovs-appctl time/warp 100
++ovs-appctl netdev-dummy/set-admin-state p2 down
++ovs-appctl time/stop
++ovs-appctl time/warp 100
++AT_CHECK([ovs-appctl netdev-dummy/receive p7 'in_port(7),eth(src=50:54:00:00:00:09,dst=50:54:00:00:00:0a),eth_type(0x0800),ipv4(src=10.0.0.2,dst=10.0.0.1,proto=1,tos=0,ttl=64,frag=no),icmp(type=8,code=0)'])
++AT_CHECK([ovs-appctl netdev-dummy/receive p7 'in_port(7),eth(src=50:54:00:00:00:0b,dst=50:54:00:00:00:0c),eth_type(0x0800),ipv4(src=10.0.0.3,dst=10.0.0.4,proto=1,tos=0,ttl=64,frag=no),icmp(type=8,code=0)'])
++ovs-appctl time/warp 100
++ovs-appctl netdev-dummy/set-admin-state p2 up
++ovs-appctl netdev-dummy/set-admin-state p1 down
++ovs-appctl time/warp 100
++AT_CHECK([ovs-appctl netdev-dummy/receive p7 'in_port(7),eth(src=50:54:00:00:00:09,dst=50:54:00:00:00:0d),eth_type(0x0800),ipv4(src=10.0.0.5,dst=10.0.0.1,proto=1,tos=0,ttl=64,frag=no),icmp(type=8,code=0)'])
++AT_CHECK([ovs-appctl netdev-dummy/receive p7 'in_port(7),eth(src=50:54:00:00:00:09,dst=50:54:00:00:00:0e),eth_type(0x0800),ipv4(src=10.0.0.6,dst=10.0.0.1,proto=1,tos=0,ttl=64,frag=no),icmp(type=8,code=0)'])
++ovs-appctl time/warp 2000 100
++AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'in_port([[348]])' | strip_xout], [0], [dnl
++recirc_id(0),in_port(3),packet_type(ns=0,id=0),eth(src=50:54:00:00:00:09,dst=50:54:00:00:00:0a),eth_type(0x0800),ipv4(frag=no), packets:0, bytes:0, used:never, actions: <del>
++recirc_id(0),in_port(3),packet_type(ns=0,id=0),eth(src=50:54:00:00:00:0b,dst=50:54:00:00:00:0c),eth_type(0x0800),ipv4(frag=no), packets:0, bytes:0, used:never, actions: <del>
++recirc_id(0),in_port(4),packet_type(ns=0,id=0),eth(src=50:54:00:00:00:09,dst=50:54:00:00:00:0d),eth_type(0x0800),ipv4(frag=no), packets:0, bytes:0, used:never, actions: <del>
++recirc_id(0),in_port(4),packet_type(ns=0,id=0),eth(src=50:54:00:00:00:09,dst=50:54:00:00:00:0e),eth_type(0x0800),ipv4(frag=no), packets:0, bytes:0, used:never, actions: <del>
++recirc_id(0),in_port(4),packet_type(ns=0,id=0),eth(src=50:54:00:00:00:09,dst=ff:ff:ff:ff:ff:ff),eth_type(0x8035), packets:0, bytes:0, used:never, actions: <del>
++recirc_id(0),in_port(4),packet_type(ns=0,id=0),eth(src=50:54:00:00:00:0b,dst=ff:ff:ff:ff:ff:ff),eth_type(0x8035), packets:0, bytes:0, used:never, actions: <del>
++])
++
++ovs-appctl netdev-dummy/set-admin-state p1 up
++ovs-appctl time/warp 100
++OVS_WAIT_UNTIL([ovs-appctl bond/show | STRIP_RECIRC_ID | STRIP_ACTIVE_SLAVE_MAC], [0], [dnl
++---- bond0 ----
++bond_mode: active-backup
++bond may use recirculation: no, <del>
++bond-hash-basis: 0
++updelay: 0 ms
++downdelay: 0 ms
++lacp_status: off
++lacp_fallback_ab: false
++active-backup primary: p1
++<active slave mac del>
++
++slave p1: enabled
++  active slave
++  may_enable: true
++
++slave p2: enabled
++  may_enable: true
++
++])
++
++OVS_VSWITCHD_STOP
++AT_CLEANUP
++
++AT_SETUP([ofproto-dpif - active-backup bonding (primary validation)])
++dnl Make a switch with 3 ports in a bond, so that when we delete one of
++dnl the ports from the bond, there are still 2 ports left and the bond
++dnl remains functional.
++OVS_VSWITCHD_START(
++  [add-bond br0 bond0 p1 p2 p3 bond_mode=active-backup \
++                other_config:bond-primary=p1 -- \
++   set interface p1 type=dummy options:pstream=punix:$OVS_RUNDIR/p1.sock ofport_request=1 -- \
++   set interface p2 type=dummy options:pstream=punix:$OVS_RUNDIR/p2.sock ofport_request=2 -- \
++   set interface p3 type=dummy options:pstream=punix:$OVS_RUNDIR/p3.sock ofport_request=3 -- \
++   add-port br0 p7 -- set interface p7 ofport_request=7 type=dummy --])
++AT_CHECK([ovs-appctl vlog/set dpif:dbg dpif_netdev:dbg])
++
++dnl Make sure the initial primary interface is set
++OVS_WAIT_UNTIL([test -n "`ovs-appctl bond/show | grep 'active-backup primary: p1'`"])
++
++dnl Down the primary interface and verify that we switched.  Then
++dnl bring the primary back and verify that we switched back to the
++dnl primary.
++ovs-appctl netdev-dummy/set-admin-state p1 down
++ovs-appctl time/warp 100
++OVS_WAIT_UNTIL([test -n "`ovs-appctl bond/show | fgrep 'slave p1: disabled'`"])
++ovs-appctl netdev-dummy/set-admin-state p1 up
++ovs-appctl time/warp 100
++OVS_WAIT_UNTIL([ovs-appctl bond/show | STRIP_RECIRC_ID | STRIP_ACTIVE_SLAVE_MAC], [0], [dnl
++---- bond0 ----
++bond_mode: active-backup
++bond may use recirculation: no, <del>
++bond-hash-basis: 0
++updelay: 0 ms
++downdelay: 0 ms
++lacp_status: off
++lacp_fallback_ab: false
++active-backup primary: p1
++<active slave mac del>
++
++slave p1: enabled
++  active slave
++  may_enable: true
++
++slave p2: enabled
++  may_enable: true
++
++slave p3: enabled
++  may_enable: true
++
++])
++
++dnl Now delete the primary and verify that the output shows that the
++dnl primary is no longer enslaved
++ovs-vsctl --id=@p1 get Interface p1 -- remove Port bond0 interfaces @p1
++ovs-appctl time/warp 100
++OVS_WAIT_UNTIL([test -n "`ovs-appctl bond/show | fgrep 'active-backup primary: p1 (no such slave)'`"])
++
++dnl Now re-add the primary and verify that the output shows that the
++dnl primary is available again.
++dnl
++dnl First, get the UUIDs of the interfaces that exist on bond0.
++dnl Strip the trailing ] so that we can add a new UUID to the end.
++uuids=`ovs-vsctl get Port bond0 interfaces | sed -e 's/]//'`
++dnl Create a new port "p1" and add its UUID to the set of interfaces
++dnl on bond0.
++ovs-vsctl \
++   --id=@p1 create Interface name=p1 type=dummy options:pstream=punix:$OVS_RUNDIR/p1.sock ofport_request=1 -- \
++   set Port bond0 interfaces="$uuids, @p1]"
++ovs-appctl time/warp 100
++OVS_WAIT_UNTIL([ovs-appctl bond/show | STRIP_RECIRC_ID | STRIP_ACTIVE_SLAVE_MAC], [0], [dnl
++---- bond0 ----
++bond_mode: active-backup
++bond may use recirculation: no, <del>
++bond-hash-basis: 0
++updelay: 0 ms
++downdelay: 0 ms
++lacp_status: off
++lacp_fallback_ab: false
++active-backup primary: p1
++<active slave mac del>
++
++slave p1: enabled
++  active slave
++  may_enable: true
++
++slave p2: enabled
++  may_enable: true
++
++slave p3: enabled
++  may_enable: true
++
++])
++
++dnl Switch to another primary
++ovs-vsctl set port bond0 other_config:bond-primary=p2
++ovs-appctl time/warp 100
++OVS_WAIT_UNTIL([ovs-appctl bond/show | STRIP_RECIRC_ID | STRIP_ACTIVE_SLAVE_MAC], [0], [dnl
++---- bond0 ----
++bond_mode: active-backup
++bond may use recirculation: no, <del>
++bond-hash-basis: 0
++updelay: 0 ms
++downdelay: 0 ms
++lacp_status: off
++lacp_fallback_ab: false
++active-backup primary: p2
++<active slave mac del>
++
++slave p1: enabled
++  active slave
++  may_enable: true
++
++slave p2: enabled
++  may_enable: true
++
++slave p3: enabled
++  may_enable: true
++
++])
++
++dnl Remove the "bond-primary" config directive from the bond.
++AT_CHECK([ovs-vsctl remove Port bond0 other_config bond-primary])
++ovs-appctl time/warp 100
++OVS_WAIT_UNTIL([ovs-appctl bond/show | STRIP_RECIRC_ID | STRIP_ACTIVE_SLAVE_MAC], [0], [dnl
++---- bond0 ----
++bond_mode: active-backup
++bond may use recirculation: no, <del>
++bond-hash-basis: 0
++updelay: 0 ms
++downdelay: 0 ms
++lacp_status: off
++lacp_fallback_ab: false
++active-backup primary: <none>
++<active slave mac del>
++
++slave p1: enabled
++  active slave
++  may_enable: true
++
++slave p2: enabled
++  may_enable: true
++
++slave p3: enabled
++  may_enable: true
++
++])
++
++OVS_VSWITCHD_STOP
++AT_CLEANUP
++
++AT_SETUP([ofproto-dpif - active-backup bonding (without primary)])
++dnl Create br0 with interfaces p1, p2 and p7, creating bond0 with p1 and p2
++dnl    and br1 with interfaces p3, p4 and p8.
++dnl toggle p1,p2 of bond0 up and down to test bonding in active-backup mode.
++OVS_VSWITCHD_START(
++  [add-bond br0 bond0 p1 p2 bond_mode=active-backup --\
++   set interface p1 type=dummy options:pstream=punix:$OVS_RUNDIR/p1.sock ofport_request=1 -- \
++   set interface p2 type=dummy options:pstream=punix:$OVS_RUNDIR/p2.sock ofport_request=2 -- \
++   add-port br0 p7 -- set interface p7 ofport_request=7 type=dummy -- \
++   add-br br1 -- \
++   set bridge br1 other-config:hwaddr=aa:66:aa:66:00:00 -- \
++   set bridge br1 datapath-type=dummy other-config:datapath-id=1234 \
++                  fail-mode=secure -- \
++   add-port br1 p3 -- set interface p3 type=dummy options:stream=unix:$OVS_RUNDIR/p1.sock ofport_request=3 -- \
++   add-port br1 p4 -- set interface p4 type=dummy options:stream=unix:$OVS_RUNDIR/p2.sock ofport_request=4 -- \
++   add-port br1 p8 -- set interface p8 ofport_request=8 type=dummy --])
+ AT_CHECK([ovs-appctl vlog/set dpif:dbg dpif_netdev:dbg])
++WAIT_FOR_DUMMY_PORTS([p3], [p4])
++OVS_WAIT_UNTIL([test -n "`ovs-appctl bond/show | grep 'active-backup primary: <none>'`"])
+ 
+ AT_CHECK([ovs-ofctl add-flow br0 action=normal])
+ AT_CHECK([ovs-ofctl add-flow br1 action=normal])
+@@ -63,15 +287,14 @@ ovs-appctl netdev-dummy/set-admin-state p1 down
+ ovs-appctl time/warp 100
+ AT_CHECK([ovs-appctl netdev-dummy/receive p7 'in_port(7),eth(src=50:54:00:00:00:09,dst=50:54:00:00:00:0d),eth_type(0x0800),ipv4(src=10.0.0.5,dst=10.0.0.1,proto=1,tos=0,ttl=64,frag=no),icmp(type=8,code=0)'])
+ AT_CHECK([ovs-appctl netdev-dummy/receive p7 'in_port(7),eth(src=50:54:00:00:00:09,dst=50:54:00:00:00:0e),eth_type(0x0800),ipv4(src=10.0.0.6,dst=10.0.0.1,proto=1,tos=0,ttl=64,frag=no),icmp(type=8,code=0)'])
+-ovs-appctl time/warp 200 100
+-sleep 1
+-AT_CHECK([grep 'in_port([[348]])' ovs-vswitchd.log | filter_flow_install | strip_xout], [0], [dnl
+-recirc_id(0),in_port(3),packet_type(ns=0,id=0),eth(src=50:54:00:00:00:09,dst=50:54:00:00:00:0a),eth_type(0x0800),ipv4(frag=no), actions: <del>
+-recirc_id(0),in_port(3),packet_type(ns=0,id=0),eth(src=50:54:00:00:00:0b,dst=50:54:00:00:00:0c),eth_type(0x0800),ipv4(frag=no), actions: <del>
+-recirc_id(0),in_port(4),packet_type(ns=0,id=0),eth(src=50:54:00:00:00:09,dst=50:54:00:00:00:0d),eth_type(0x0800),ipv4(frag=no), actions: <del>
+-recirc_id(0),in_port(4),packet_type(ns=0,id=0),eth(src=50:54:00:00:00:09,dst=50:54:00:00:00:0e),eth_type(0x0800),ipv4(frag=no), actions: <del>
+-recirc_id(0),in_port(4),packet_type(ns=0,id=0),eth(src=50:54:00:00:00:09,dst=ff:ff:ff:ff:ff:ff),eth_type(0x8035), actions: <del>
+-recirc_id(0),in_port(4),packet_type(ns=0,id=0),eth(src=50:54:00:00:00:0b,dst=ff:ff:ff:ff:ff:ff),eth_type(0x8035), actions: <del>
++ovs-appctl time/warp 2000 100
++AT_CHECK([ovs-appctl dpctl/dump-flows | grep 'in_port([[348]])' | strip_xout], [0], [dnl
++recirc_id(0),in_port(3),packet_type(ns=0,id=0),eth(src=50:54:00:00:00:09,dst=50:54:00:00:00:0a),eth_type(0x0800),ipv4(frag=no), packets:0, bytes:0, used:never, actions: <del>
++recirc_id(0),in_port(3),packet_type(ns=0,id=0),eth(src=50:54:00:00:00:0b,dst=50:54:00:00:00:0c),eth_type(0x0800),ipv4(frag=no), packets:0, bytes:0, used:never, actions: <del>
++recirc_id(0),in_port(4),packet_type(ns=0,id=0),eth(src=50:54:00:00:00:09,dst=50:54:00:00:00:0d),eth_type(0x0800),ipv4(frag=no), packets:0, bytes:0, used:never, actions: <del>
++recirc_id(0),in_port(4),packet_type(ns=0,id=0),eth(src=50:54:00:00:00:09,dst=50:54:00:00:00:0e),eth_type(0x0800),ipv4(frag=no), packets:0, bytes:0, used:never, actions: <del>
++recirc_id(0),in_port(4),packet_type(ns=0,id=0),eth(src=50:54:00:00:00:09,dst=ff:ff:ff:ff:ff:ff),eth_type(0x8035), packets:0, bytes:0, used:never, actions: <del>
++recirc_id(0),in_port(4),packet_type(ns=0,id=0),eth(src=50:54:00:00:00:0b,dst=ff:ff:ff:ff:ff:ff),eth_type(0x8035), packets:0, bytes:0, used:never, actions: <del>
+ ])
+ OVS_VSWITCHD_STOP
+ AT_CLEANUP
+diff --git a/vswitchd/bridge.c b/vswitchd/bridge.c
+index 0bb4fa652..a3e7facd3 100644
+--- a/vswitchd/bridge.c
++++ b/vswitchd/bridge.c
+@@ -4565,6 +4565,11 @@ port_configure_bond(struct port *port, struct bond_settings *s)
+                   port->name);
+     }
+ 
++    s->primary = NULL;
++    if (s->balance == BM_AB || s->lacp_fallback_ab_cfg) {
++        s->primary = smap_get(&port->cfg->other_config, "bond-primary");
++    }
++
+     miimon_interval = smap_get_int(&port->cfg->other_config,
+                                    "bond-miimon-interval", 0);
+     if (miimon_interval <= 0) {
+diff --git a/vswitchd/vswitch.xml b/vswitchd/vswitch.xml
+index b6acb34ca..5fd15ce4f 100644
+--- a/vswitchd/vswitch.xml
++++ b/vswitchd/vswitch.xml
+@@ -2003,6 +2003,14 @@
+         <code>active-backup</code>.
+       </column>
+ 
++      <column name="other_config" key="bond-primary"
++              type='{"type": "string"}'>
++        If a slave interface with this name exists in the bond and
++        is up, it will be made active.  Relevant only when <ref
++        column="other_config" key="bond_mode"/> is
++        <code>active-backup</code>.
++      </column>
++
+       <group title="Link Failure Detection">
+         <p>
+           An important part of link bonding is detecting that links are down so
